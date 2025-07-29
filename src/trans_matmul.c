@@ -6,7 +6,7 @@
 #include <immintrin.h>
 #include "matmul.h"
 
-#define BLOCK_SIZE 68
+#define BLOCK_SIZE 64
 
 void transpose_2d_array_ops(float* a, float* out, int* shape) {
   int rows = shape[0], cols = shape[1];
@@ -78,29 +78,30 @@ void hybrid_transposed_matmul(float* a, float* b, float* out, int* shape_a, int*
       int i_end = (ii + BLOCK_SIZE < rows_a) ? ii + BLOCK_SIZE : rows_a;
       int j_end = (jj + BLOCK_SIZE < cols_b) ? jj + BLOCK_SIZE : cols_b;
 
+      // restructured to leverage transpose benefits with proper memory access
       for (int i = ii; i < i_end; i++) {
-        for (int j = jj; j < j_end; j += 8) {
-          __m256 sum = _mm256_setzero_ps();
-          int remaining = j_end - j;
-          int simd_width = (remaining >= 8) ? 8 : remaining;
+        for (int j = jj; j < j_end; j++) {
+          float sum = 0.0f;
 
-          for (int k = 0; k < cols_a; k++) {
-            __m256 a_vec = _mm256_broadcast_ss(&a[i * cols_a + k]);
-            if (simd_width == 8) {
-              float b_vals[8];
-              for (int idx = 0; idx < 8; idx++) { b_vals[idx] = b_transposed[(j + idx) * cols_a + k]; }
-              __m256 b_vec = _mm256_loadu_ps(b_vals);
-              sum = _mm256_fmadd_ps(a_vec, b_vec, sum);
-            } else {
-              for (int jj_inner = j; jj_inner < j + simd_width; jj_inner++) { out[i * cols_b + jj_inner] += a[i * cols_a + k] * b_transposed[jj_inner * cols_a + k]; }
-            }
+          // vectorize the inner dot product using consecutive access on b_transposed
+          int k = 0;
+          for (; k <= cols_a - 8; k += 8) {
+            __m256 a_vec = _mm256_loadu_ps(&a[i * cols_a + k]);
+            __m256 b_vec = _mm256_loadu_ps(&b_transposed[j * cols_a + k]);
+            __m256 prod = _mm256_mul_ps(a_vec, b_vec);
+
+            // horizontal sum of the 8 products
+            __m128 sum_high = _mm256_extractf128_ps(prod, 1);
+            __m128 sum_low = _mm256_castps256_ps128(prod);
+            __m128 sum128 = _mm_add_ps(sum_low, sum_high);
+            sum128 = _mm_hadd_ps(sum128, sum128);
+            sum128 = _mm_hadd_ps(sum128, sum128);
+            sum += _mm_cvtss_f32(sum128);
           }
 
-          if (simd_width == 8) {
-            float result[8];
-            _mm256_storeu_ps(result, sum);
-            for (int idx = 0; idx < 8; idx++) { out[i * cols_b + j + idx] += result[idx]; }
-          }
+          // handle remaining elements
+          for (; k < cols_a; k++) { sum += a[i * cols_a + k] * b_transposed[j * cols_a + k]; }
+          out[i * cols_b + j] = sum;
         }
       }
     }
