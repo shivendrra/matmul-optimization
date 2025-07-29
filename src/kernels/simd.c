@@ -43,32 +43,19 @@ void simd_matmul(float* a, float* b, float* out, int* shape_a, int* shape_b) {
 // SIMD version of transpose operation
 void simd_transpose_2d_array_ops(float* a, float* out, int* shape) {
   int rows = shape[0], cols = shape[1];
-  // for small matrices or when SIMD doesn't help much, fall back to scalar
-  if (rows * cols < BLOCK_SIZE) {
-    for (int idx = 0; idx < rows * cols; ++idx) {
-      int i = idx / cols, j = idx % cols;
-      out[j * rows + i] = a[idx];
+  
+  for (int i = 0; i < rows; i++) {
+    for (int j = 0; j < cols; j += NUM_ELEMNS) {
+      int remaining = cols - j;
+      if (remaining >= NUM_ELEMNS) {
+        __m256 data = _mm256_loadu_ps(&a[i * cols + j]);
+        float temp[NUM_ELEMNS];
+        _mm256_storeu_ps(temp, data);
+        for (int offset = 0; offset < NUM_ELEMNS; offset++) { out[(j + offset) * rows + i] = temp[offset]; }
+      } else {
+        for (int offset = 0; offset < remaining; offset++) { out[(j + offset) * rows + i] = a[i * cols + j + offset]; }
+      }
     }
-    return;
-  }
-
-  int total_elements = rows * cols;
-  int simd_end = (total_elements / NUM_ELEMNS) * NUM_ELEMNS;
-  for (int idx = 0; idx < simd_end; idx += NUM_ELEMNS) {
-    __m256 data = _mm256_loadu_ps(&a[idx]);
-    float temp[NUM_ELEMNS];
-    _mm256_storeu_ps(temp, data);
-    // Transpose each element individually
-    for (int offset = 0; offset < NUM_ELEMNS; offset++) {
-        int current_idx = idx + offset;
-        int i = current_idx / cols, j = current_idx % cols;
-        out[j * rows + i] = temp[offset];
-    }
-  }
-
-  for (int idx = simd_end; idx < total_elements; ++idx) {
-    int i = idx / cols, j = idx % cols;
-    out[j * rows + i] = a[idx];
   }
 }
 
@@ -84,7 +71,6 @@ void simd_transpose_matmul(float* a, float* b, float* out, int* shape_a, int* sh
   for (int i = 0; i < rows_a; i++) {
     for (int j = 0; j < cols_b; j++) {
       __m256 sum_vec = _mm256_setzero_ps();
-      float sum = 0.0f;
       int simd_end = (cols_a / NUM_ELEMNS) * NUM_ELEMNS;
 
       for (int k = 0; k < simd_end; k += NUM_ELEMNS) {
@@ -93,13 +79,9 @@ void simd_transpose_matmul(float* a, float* b, float* out, int* shape_a, int* sh
         sum_vec = _mm256_fmadd_ps(a_vec, b_vec, sum_vec);
       }
 
-      // Horizontal sum
-      __m128 high = _mm256_extractf128_ps(sum_vec, 1);
-      __m128 low = _mm256_castps256_ps128(sum_vec);
-      __m128 sum128 = _mm_add_ps(high, low);
-      sum128 = _mm_hadd_ps(sum128, sum128);
-      sum128 = _mm_hadd_ps(sum128, sum128);
-      sum = _mm_cvtss_f32(sum128);
+      float sum_array[NUM_ELEMNS];
+      _mm256_storeu_ps(sum_array, sum_vec);
+      float sum = sum_array[0] + sum_array[1] + sum_array[2] + sum_array[3] + sum_array[4] + sum_array[5] + sum_array[6] + sum_array[7];
       for (int k = simd_end; k < cols_a; k++) { sum += a[i * cols_a + k] * b_transposed[j * cols_a + k]; }
       out[i * cols_b + j] = sum;
     }
@@ -126,25 +108,21 @@ void simd_transpose_matmul_blocked(float* a, float* b, float* out, int* shape_a,
         for (int i = ii; i < i_end; i++) {
           for (int j = jj; j < j_end; j++) {
             __m256 sum_vec = _mm256_setzero_ps();
-            float sum = 0.0f;
             int k_simd_end = kk + ((k_end - kk) / NUM_ELEMNS) * NUM_ELEMNS;
-
             for (int k = kk; k < k_simd_end; k += NUM_ELEMNS) {
               __m256 a_vec = _mm256_loadu_ps(&a[i * cols_a + k]);
               __m256 b_vec = _mm256_loadu_ps(&b_transposed[j * cols_a + k]);
               sum_vec = _mm256_fmadd_ps(a_vec, b_vec, sum_vec);
             }
 
-            // Horizontal sum
-            __m128 high = _mm256_extractf128_ps(sum_vec, 1);
-            __m128 low = _mm256_castps256_ps128(sum_vec);
-            __m128 sum128 = _mm_add_ps(high, low);
-            sum128 = _mm_hadd_ps(sum128, sum128);
-            sum128 = _mm_hadd_ps(sum128, sum128);
-            sum += _mm_cvtss_f32(sum128);
+            float sum_array[NUM_ELEMNS];
+            _mm256_storeu_ps(sum_array, sum_vec);
+            float partial_sum = sum_array[0] + sum_array[1] + sum_array[2] + sum_array[3] + sum_array[4] + sum_array[5] + sum_array[6] + sum_array[7];
 
-            for (int k = k_simd_end; k < k_end; k++) { sum += a[i * cols_a + k] * b_transposed[j * cols_a + k]; }
-            out[i * cols_b + j] += sum;
+            for (int k = k_simd_end; k < k_end; k++) {
+              partial_sum += a[i * cols_a + k] * b_transposed[j * cols_a + k];
+            }
+            out[i * cols_b + j] += partial_sum;
           }
         }
       }
