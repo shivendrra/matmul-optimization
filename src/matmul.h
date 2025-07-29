@@ -3,9 +3,14 @@
 
 #include <stddef.h>
 
-void transpose_2d_array_ops(float* a, float* out, int* shape);
-void optimized_ops(float* a, float* b, float* out, int* shape_a, int* shape_b);
-
+// parallelization methods on naive matmul
 void naive_matmul(float* a, float* b, float* out, int* shape1, int* shape2, size_t ndim, size_t size1, size_t size2);
+void blocked_matmul(float* a, float* b, float* out, int* shape_a, int* shape_b);
+void openmp_matmul(float* a, float* b, float* out, int* shape_a, int* shape_b);
+void simd_matmul(float* a, float* b, float* out, int* shape_a, int* shape_b);
+void hybrid_parallel_matmul(float* a, float* b, float* out, int* shape_a, int* shape_b);
+
+// transpose matmul & parallel kernels
+void optimized_ops(float* a, float* b, float* out, int* shape_a, int* shape_b);
 
 #endif  //!__MATMUL__H__

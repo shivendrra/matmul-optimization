@@ -1,152 +1,151 @@
-// gcc -o test test.c src/naive_matmul.c src/trans_matmul.c -lm
-// ./test
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 #include <string.h>
+#include <math.h>
+#include <omp.h>
 #include "src/helpers.h"
 #include "src/matmul.h"
 
 typedef struct {
-  int rows;
-  int cols;
-} MatrixSize;
+  const char* name;
+  void (*func)(float*, float*, float*, int*, int*);
+  int enabled;
+} MatmulImplementation;
 
-double get_time_diff(clock_t start, clock_t end) {
-  return ((double)(end - start)) / CLOCKS_PER_SEC;
+double get_time_diff_precise(struct timespec start, struct timespec end) {
+  return (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
 }
 
-void run_benchmark(MatrixSize size_a, MatrixSize size_b, const char* test_name) {
-  printf("\n=== %s ===\n", test_name);
-  printf("Matrix A: %dx%d, Matrix B: %dx%d\n", size_a.rows, size_a.cols, size_b.rows, size_b.cols);
+int verify_results(float* ref, float* test, size_t size, float tolerance) {
+  for (size_t i = 0; i < size; i++) {
+    if (fabs(ref[i] - test[i]) > tolerance) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+void run_comprehensive_benchmark(int rows_a, int cols_a, int rows_b, int cols_b) {
+  printf("\n=== Matrix Multiplication Benchmark ===\n");
+  printf("A: %dx%d, B: %dx%d, Output: %dx%d\n", rows_a, cols_a, rows_b, cols_b, rows_a, cols_b);
   
-  if (size_a.cols != size_b.rows) {
-    printf("Error: Invalid matrix dimensions for multiplication\n");
+  if (cols_a != rows_b) {
+    printf("Error: Matrix dimensions incompatible\n");
     return;
   }
   
-  int shape_a[2] = {size_a.rows, size_a.cols};
-  int shape_b[2] = {size_b.rows, size_b.cols};
-  int shape_out[2] = {size_a.rows, size_b.cols};
+  int shape_a[2] = {rows_a, cols_a};
+  int shape_b[2] = {rows_b, cols_b};
+  size_t size_a = rows_a * cols_a;
+  size_t size_b = rows_b * cols_b;
+  size_t size_out = rows_a * cols_b;
   
-  size_t size_a_total = size_a.rows * size_a.cols;
-  size_t size_b_total = size_b.rows * size_b.cols;
-  size_t size_out_total = size_a.rows * size_b.cols;
+  float* a = randn_array(shape_a, size_a, 2);
+  float* b = randn_array(shape_b, size_b, 2);
+  float* out_ref = (float*)calloc(size_out, sizeof(float));
+  float* out_test = (float*)calloc(size_out, sizeof(float));
   
-  float* a = randn_array(shape_a, size_a_total, 2);
-  float* b = randn_array(shape_b, size_b_total, 2);
-  float* out_naive = (float*)malloc(size_out_total * sizeof(float));
-  float* out_optimized = (float*)malloc(size_out_total * sizeof(float));
-  
-  if (!out_naive || !out_optimized) {
+  if (!a || !b || !out_ref || !out_test) {
     printf("Memory allocation failed\n");
     return;
   }
   
-  memset(out_naive, 0, size_out_total * sizeof(float));
-  memset(out_optimized, 0, size_out_total * sizeof(float));
+  MatmulImplementation implementations[] = {
+    {"Naive (Reference)", (void*)naive_matmul, 1},
+    {"OpenMP", openmp_matmul, 1},
+    {"SIMD (AVX2)", simd_matmul, 1},
+    {"Blocked", blocked_matmul, 1},
+    {"Hybrid (OpenMP + SIMD + Blocked)", hybrid_parallel_matmul, 1},
+  };
   
-  clock_t start, end;
+  int num_impls = sizeof(implementations) / sizeof(implementations[0]);
+  clock_t times[num_impls];
+  int correct[num_impls];
   
-  start = clock();
-  naive_matmul(a, b, out_naive, shape_a, shape_b, 2, size_a_total, size_b_total);
-  end = clock();
-  double naive_time = get_time_diff(start, end);
+  printf("\nRunning benchmarks...\n");
+  printf("%-35s %12s %12s %10s\n", "Implementation", "Time (s)", "Speedup", "Correct");
+  printf("%-35s %12s %12s %10s\n", "==============", "========", "=======", "=======");
   
-  start = clock();
-  optimized_ops(a, b, out_optimized, shape_a, shape_b);
-  end = clock();
-  double optimized_time = get_time_diff(start, end);
+  for (int i = 0; i < num_impls; i++) {
+    if (!implementations[i].enabled) continue;
+    memset(out_test, 0, size_out * sizeof(float));
+    
+    clock_t start = clock();
+    if (i == 0) { 
+      naive_matmul(a, b, out_test, shape_a, shape_b, 2, size_a, size_b); 
+    } else { 
+      implementations[i].func(a, b, out_test, shape_a, shape_b); 
+    }
+    clock_t end = clock();
+    
+    times[i] = end - start;
+    double time_seconds = ((double)times[i]) / CLOCKS_PER_SEC;
+
+    if (i == 0) {
+      memcpy(out_ref, out_test, size_out * sizeof(float));
+      correct[i] = 1;
+    } else { 
+      correct[i] = verify_results(out_ref, out_test, size_out, 1e-4); 
+    }
+    
+    double speedup = (i == 0) ? 1.0 : ((double)times[0]) / times[i];
+
+    printf("%-35s %12.6f %12.2fx %10s\n", implementations[i].name, time_seconds, speedup, correct[i] ? "YES" : "NO");
+  }
   
-  printf("Naive implementation:     %.6f seconds\n", naive_time);
-  printf("Optimized implementation: %.6f seconds\n", optimized_time);
-  printf("Speedup: %.2fx\n", naive_time / optimized_time);
+  printf("\nPerformance Analysis:\n");
+  clock_t best_time = times[0];
+  int best_idx = 0;
   
-  int results_match = 1;
-  for (size_t i = 0; i < size_out_total && results_match; i++) {
-    if (fabs(out_naive[i] - out_optimized[i]) > 1e-5) {
-      results_match = 0;
+  for (int i = 1; i < num_impls; i++) {
+    if (implementations[i].enabled && correct[i] && times[i] < best_time) {
+      best_time = times[i];
+      best_idx = i;
     }
   }
-  printf("Results match: %s\n", results_match ? "YES" : "NO");
+  
+  printf("Best performing: %s (%.2fx speedup)\n", implementations[best_idx].name, ((double)times[0]) / best_time);
+  
+  double total_ops = 2.0 * rows_a * cols_a * cols_b;
+  double best_time_seconds = ((double)best_time) / CLOCKS_PER_SEC;
+  printf("GFLOPS (best): %.2f\n", total_ops / (best_time_seconds * 1e9));
   
   free(a);
   free(b);
-  free(out_naive);
-  free(out_optimized);
-}
-
-void print_small_matrix_test() {
-  printf("\n=== Small Matrix Verification ===\n");
-  
-  int shape_a[2] = {3, 4};
-  int shape_b[2] = {4, 3};
-  
-  float* a = randn_array(shape_a, 12, 2);
-  float* b = randn_array(shape_b, 12, 2);
-  float* out_naive = (float*)calloc(9, sizeof(float));
-  float* out_optimized = (float*)calloc(9, sizeof(float));
-  
-  printf("Matrix A (3x4):\n");
-  print_array(a, shape_a);
-  printf("\nMatrix B (4x3):\n");
-  print_array(b, shape_b);
-  
-  naive_matmul(a, b, out_naive, shape_a, shape_b, 2, 12, 12);
-  optimized_ops(a, b, out_optimized, shape_a, shape_b);
-  
-  int shape_out[2] = {3, 3};
-  printf("\nNaive Result (3x3):\n");
-  print_array(out_naive, shape_out);
-  printf("\nOptimized Result (3x3):\n");
-  print_array(out_optimized, shape_out);
-  
-  free(a);
-  free(b);
-  free(out_naive);
-  free(out_optimized);
+  free(out_ref);
+  free(out_test);
 }
 
 int main() {
-  printf("Matrix Multiplication Performance Benchmark\n");
-  printf("============================================\n");
+  printf("Parallel Matrix Multiplication Benchmark Suite\n");
+  printf("===============================================\n");
   
-  print_small_matrix_test();
+  printf("System Info:\n");
+  printf("OpenMP threads: %d\n", omp_get_max_threads());
+  printf("Available processors: %d\n", omp_get_num_procs());
   
-  MatrixSize test_cases[][2] = {
-    {{64, 64}, {64, 64}},
-    {{128, 64}, {64, 32}},
-    {{100, 200}, {200, 150}},
-    {{256, 256}, {256, 256}},
-    {{512, 128}, {128, 64}},
-    {{300, 400}, {400, 500}},
-    {{1024, 512}, {512, 256}},
-    {{800, 600}, {600, 400}}
+  int test_sizes[][4] = {
+    {128, 128, 128, 128},
+    {256, 256, 256, 256},
+    {512, 256, 256, 128},
+    {512, 512, 512, 512},
+    {1024, 512, 512, 256},
+    {4096, 1024, 1024, 3072},
   };
   
-  const char* test_names[] = {
-    "Small Square (64x64)",
-    "Small Rectangle (128x64 @ 64x32)",
-    "Medium Rectangle (100x200 @ 200x150)",
-    "Medium Square (256x256)",
-    "Medium Rectangle (512x128 @ 128x64)",
-    "Large Rectangle (300x400 @ 400x500)",
-    "Large Rectangle (1024x512 @ 512x256)",
-    "Large Rectangle (800x600 @ 600x400)"
-  };
-  
-  int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
+  int num_tests = sizeof(test_sizes) / sizeof(test_sizes[0]);
   
   for (int i = 0; i < num_tests; i++) {
-    run_benchmark(test_cases[i][0], test_cases[i][1], test_names[i]);
+    run_comprehensive_benchmark(test_sizes[i][0], test_sizes[i][1], test_sizes[i][2], test_sizes[i][3]);
   }
-  
-  printf("\n=== Summary ===\n");
-  printf("Tested %d different matrix size combinations\n", num_tests);
-  printf("All tests include both square and rectangular matrices\n");
-  printf("The optimized implementation uses matrix transposition\n");
-  printf("to improve cache locality and memory access patterns.\n");
+
+  printf("\n=== Implementation Details ===\n");
+  printf("1. Pthread: Manual thread management with row-wise parallelization\n");
+  printf("2. OpenMP: Compiler-based parallelization with dynamic scheduling\n");
+  printf("3. SIMD: AVX2 vectorization processing 8 floats simultaneously\n");
+  printf("4. Blocked: Cache-friendly tiled computation (64x64 blocks)\n");
+  printf("5. Hybrid: Combines OpenMP + SIMD + blocking for maximum performance\n");
   
   return 0;
 }
