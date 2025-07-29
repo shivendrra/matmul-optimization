@@ -12,5 +12,10 @@ void hybrid_parallel_matmul(float* a, float* b, float* out, int* shape_a, int* s
 
 // transpose matmul & parallel kernels
 void optimized_ops(float* a, float* b, float* out, int* shape_a, int* shape_b);
+void simd_transpose_matmul(float* a, float* b, float* out, int* shape_a, int* shape_b);
+void simd_transpose_matmul_blocked(float* a, float* b, float* out, int* shape_a, int* shape_b);
+void openmp_transpose_matmul(float* a, float* b, float* out, int* shape_a, int* shape_b);
+void blocked_transpose_matmul(float* a, float* b, float* out, int* shape_a, int* shape_b);
+
 
 #endif  //!__MATMUL__H__
