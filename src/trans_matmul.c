@@ -56,10 +56,7 @@ void hybrid_transpose_2d_array_ops(float* a, float* out, int* shape) {
       int i_end = (ii + BLOCK_SIZE < rows) ? ii + BLOCK_SIZE : rows;
       int j_end = (jj + BLOCK_SIZE < cols) ? jj + BLOCK_SIZE : cols;
       for (int i = ii; i < i_end; i++) {
-        for (int j = jj; j < j_end; j++) {
-          int idx = i * cols + j;
-          out[j * rows + i] = a[idx];
-        }
+        for (int j = jj; j < j_end; j++) { out[j * rows + i] = a[i * cols + j]; }
       }
     }
   }
@@ -74,50 +71,40 @@ void hybrid_transposed_matmul(float* a, float* b, float* out, int* shape_a, int*
     exit(EXIT_FAILURE);
   }
   hybrid_transpose_2d_array_ops(b, b_transposed, shape_b);
-  memset(out, 0, rows_a * cols_b * sizeof(float));
+  memset(out, 0, rows_a * cols_b * sizeof(float));  
   #pragma omp parallel for collapse(2) schedule(dynamic, 8)
   for (int ii = 0; ii < rows_a; ii += BLOCK_SIZE) {
     for (int jj = 0; jj < cols_b; jj += BLOCK_SIZE) {
-      for (int kk = 0; kk < cols_a; kk += BLOCK_SIZE) {
+      int i_end = (ii + BLOCK_SIZE < rows_a) ? ii + BLOCK_SIZE : rows_a;
+      int j_end = (jj + BLOCK_SIZE < cols_b) ? jj + BLOCK_SIZE : cols_b;
 
-        int i_end = (ii + BLOCK_SIZE < rows_a) ? ii + BLOCK_SIZE : rows_a;
-        int j_end = (jj + BLOCK_SIZE < cols_b) ? jj + BLOCK_SIZE : cols_b;
-        int k_end = (kk + BLOCK_SIZE < cols_a) ? kk + BLOCK_SIZE : cols_a;
+      for (int i = ii; i < i_end; i++) {
+        for (int j = jj; j < j_end; j += 8) {
+          __m256 sum = _mm256_setzero_ps();
+          int remaining = j_end - j;
+          int simd_width = (remaining >= 8) ? 8 : remaining;
 
-        for (int i = ii; i < i_end; i++) {
-          for (int j = jj; j < j_end; j += 8) {
-            __m256 sum = _mm256_setzero_ps();
-            for (int k = kk; k < k_end; k++) {
-              __m256 a_vec = _mm256_broadcast_ss(&a[i * cols_a + k]);
-
-              int remaining = j_end - j;
-              if (remaining >= 8 && j + 8 <= cols_b) {
-                float b_vals[8];
-                for (int idx = 0; idx < 8; idx++) { b_vals[idx] = b_transposed[(j + idx) * cols_a + k]; }
-                __m256 b_vec = _mm256_loadu_ps(b_vals);
-                sum = _mm256_fmadd_ps(a_vec, b_vec, sum);
-              } else {
-                // handling remaining elements without SIMD
-                for (int jj_inner = j; jj_inner < j_end && jj_inner < j + 8; jj_inner++) {
-                  out[i * cols_b + jj_inner] += a[i * cols_a + k] * b_transposed[jj_inner * cols_a + k];
-                }
-                goto next_k; // skippinh the store operation below
-              }
+          for (int k = 0; k < cols_a; k++) {
+            __m256 a_vec = _mm256_broadcast_ss(&a[i * cols_a + k]);
+            if (simd_width == 8) {
+              float b_vals[8];
+              for (int idx = 0; idx < 8; idx++) { b_vals[idx] = b_transposed[(j + idx) * cols_a + k]; }
+              __m256 b_vec = _mm256_loadu_ps(b_vals);
+              sum = _mm256_fmadd_ps(a_vec, b_vec, sum);
+            } else {
+              for (int jj_inner = j; jj_inner < j + simd_width; jj_inner++) { out[i * cols_b + jj_inner] += a[i * cols_a + k] * b_transposed[jj_inner * cols_a + k]; }
             }
+          }
 
-            // storing results back to output
-            if (j + 8 <= cols_b && j + 8 <= j_end) { 
-              float result[8];
-              _mm256_storeu_ps(result, sum);
-              for (int idx = 0; idx < 8; idx++) {
-                out[i * cols_b + j + idx] += result[idx];
-              }
-            }
-            next_k:;
+          if (simd_width == 8) {
+            float result[8];
+            _mm256_storeu_ps(result, sum);
+            for (int idx = 0; idx < 8; idx++) { out[i * cols_b + j + idx] += result[idx]; }
           }
         }
       }
     }
   }
+  
   free(b_transposed);
 }

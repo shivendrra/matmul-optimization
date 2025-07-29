@@ -40,7 +40,6 @@ void simd_matmul(float* a, float* b, float* out, int* shape_a, int* shape_b) {
   }
 }
 
-// SIMD version of transpose operation
 void simd_transpose_2d_array_ops(float* a, float* out, int* shape) {
   int rows = shape[0], cols = shape[1];
   
@@ -51,15 +50,18 @@ void simd_transpose_2d_array_ops(float* a, float* out, int* shape) {
         __m256 data = _mm256_loadu_ps(&a[i * cols + j]);
         float temp[NUM_ELEMNS];
         _mm256_storeu_ps(temp, data);
-        for (int offset = 0; offset < NUM_ELEMNS; offset++) { out[(j + offset) * rows + i] = temp[offset]; }
+        for (int offset = 0; offset < NUM_ELEMNS; offset++) {
+          out[(j + offset) * rows + i] = temp[offset];
+        }
       } else {
-        for (int offset = 0; offset < remaining; offset++) { out[(j + offset) * rows + i] = a[i * cols + j + offset]; }
+        for (int offset = 0; offset < remaining; offset++) {
+          out[(j + offset) * rows + i] = a[i * cols + j + offset];
+        }
       }
     }
   }
 }
 
-// SIMD optimized matrix multiplication using transposed second matrix
 void simd_transpose_matmul(float* a, float* b, float* out, int* shape_a, int* shape_b) {
   int rows_a = shape_a[0], cols_a = shape_a[1], rows_b = shape_b[0], cols_b = shape_b[1];
   float* b_transposed = (float*)malloc(rows_b * cols_b * sizeof(float));
@@ -67,7 +69,7 @@ void simd_transpose_matmul(float* a, float* b, float* out, int* shape_a, int* sh
     fprintf(stderr, "Memory allocation failed for transpose buffer\n");
     exit(EXIT_FAILURE);
   }
-  simd_transpose_2d_array_ops(b, b_transposed, shape_b);
+  simd_transpose_2d_array_ops(b, b_transposed, shape_b);  
   for (int i = 0; i < rows_a; i++) {
     for (int j = 0; j < cols_b; j++) {
       __m256 sum_vec = _mm256_setzero_ps();
@@ -115,13 +117,16 @@ void simd_transpose_matmul_blocked(float* a, float* b, float* out, int* shape_a,
               sum_vec = _mm256_fmadd_ps(a_vec, b_vec, sum_vec);
             }
 
-            float sum_array[NUM_ELEMNS];
-            _mm256_storeu_ps(sum_array, sum_vec);
-            float partial_sum = sum_array[0] + sum_array[1] + sum_array[2] + sum_array[3] + sum_array[4] + sum_array[5] + sum_array[6] + sum_array[7];
+            __m128 high = _mm256_extractf128_ps(sum_vec, 1);
+            __m128 low = _mm256_castps256_ps128(sum_vec);
+            __m128 sum128 = _mm_add_ps(high, low);
+            __m128 shuf = _mm_shuffle_ps(sum128, sum128, _MM_SHUFFLE(2, 3, 0, 1));
+            sum128 = _mm_add_ps(sum128, shuf);
+            shuf = _mm_shuffle_ps(sum128, sum128, _MM_SHUFFLE(1, 0, 3, 2));
+            sum128 = _mm_add_ps(sum128, shuf);
+            float partial_sum = _mm_cvtss_f32(sum128);
 
-            for (int k = k_simd_end; k < k_end; k++) {
-              partial_sum += a[i * cols_a + k] * b_transposed[j * cols_a + k];
-            }
+            for (int k = k_simd_end; k < k_end; k++) { partial_sum += a[i * cols_a + k] * b_transposed[j * cols_a + k]; }
             out[i * cols_b + j] += partial_sum;
           }
         }
