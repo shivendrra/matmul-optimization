@@ -1,3 +1,6 @@
+// gcc -O3 -fopenmp -mavx2 -mfma -std=c11 -o test test.c src/naive_matmul.c src/trans_matmul.c src/kernels/blocked.c src/kernels/openmp.c src/kernels/simd.c -lm
+// ./test.exe
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -10,8 +13,16 @@
 typedef struct {
   const char* name;
   void (*func)(float*, float*, float*, int*, int*);
+  void (*func_naive)(float*, float*, float*, int*, int*, size_t, size_t, size_t);
+  int is_naive;
   int enabled;
 } MatmulImplementation;
+
+typedef struct {
+  const char* category;
+  MatmulImplementation* implementations;
+  int count;
+} MatmulCategory;
 
 double get_time_diff_precise(struct timespec start, struct timespec end) {
   return (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
@@ -26,8 +37,8 @@ int verify_results(float* ref, float* test, size_t size, float tolerance) {
   return 1;
 }
 
-void run_comprehensive_benchmark(int rows_a, int cols_a, int rows_b, int cols_b) {
-  printf("\n=== Matrix Multiplication Benchmark ===\n");
+void run_category_benchmark(MatmulCategory* category, int rows_a, int cols_a, int rows_b, int cols_b) {
+  printf("\n=== %s Implementations ===\n", category->category);
   printf("A: %dx%d, B: %dx%d, Output: %dx%d\n", rows_a, cols_a, rows_b, cols_b, rows_a, cols_b);
   
   if (cols_a != rows_b) {
@@ -51,65 +62,54 @@ void run_comprehensive_benchmark(int rows_a, int cols_a, int rows_b, int cols_b)
     return;
   }
   
-  MatmulImplementation implementations[] = {
-    {"Naive (Reference)", (void*)naive_matmul, 1},
-    {"OpenMP", openmp_matmul, 1},
-    {"SIMD (AVX2)", simd_matmul, 1},
-    {"Blocked", blocked_matmul, 1},
-    {"Hybrid (OpenMP + SIMD + Blocked)", hybrid_parallel_matmul, 1},
-  };
+  clock_t times[category->count];
+  int correct[category->count];
   
-  int num_impls = sizeof(implementations) / sizeof(implementations[0]);
-  clock_t times[num_impls];
-  int correct[num_impls];
-  
-  printf("\nRunning benchmarks...\n");
-  printf("%-35s %12s %12s %10s\n", "Implementation", "Time (s)", "Speedup", "Correct");
+  printf("\n%-35s %12s %12s %10s\n", "Implementation", "Time (s)", "Speedup", "Correct");
   printf("%-35s %12s %12s %10s\n", "==============", "========", "=======", "=======");
   
-  for (int i = 0; i < num_impls; i++) {
-    if (!implementations[i].enabled) continue;
+  for (int i = 0; i < category->count; i++) {
+    if (!category->implementations[i].enabled) continue;
     memset(out_test, 0, size_out * sizeof(float));
     
     clock_t start = clock();
-    if (i == 0) { 
-      naive_matmul(a, b, out_test, shape_a, shape_b, 2, size_a, size_b); 
-    } else { 
-      implementations[i].func(a, b, out_test, shape_a, shape_b); 
+    
+    if (category->implementations[i].is_naive) {
+      category->implementations[i].func_naive(a, b, out_test, shape_a, shape_b, 2, size_a, size_b);
+    } else {
+      category->implementations[i].func(a, b, out_test, shape_a, shape_b);
     }
+    
     clock_t end = clock();
     
     times[i] = end - start;
     double time_seconds = ((double)times[i]) / CLOCKS_PER_SEC;
-
     if (i == 0) {
       memcpy(out_ref, out_test, size_out * sizeof(float));
       correct[i] = 1;
     } else { 
       correct[i] = verify_results(out_ref, out_test, size_out, 1e-4); 
     }
-    
-    double speedup = (i == 0) ? 1.0 : ((double)times[0]) / times[i];
 
-    printf("%-35s %12.6f %12.2fx %10s\n", implementations[i].name, time_seconds, speedup, correct[i] ? "YES" : "NO");
+    double speedup = (i == 0) ? 1.0 : ((double)times[0]) / times[i];
+    printf("%-35s %12.6f %12.2fx %10s\n", category->implementations[i].name, time_seconds, speedup, correct[i] ? "YES" : "NO");
   }
   
-  printf("\nPerformance Analysis:\n");
   clock_t best_time = times[0];
   int best_idx = 0;
   
-  for (int i = 1; i < num_impls; i++) {
-    if (implementations[i].enabled && correct[i] && times[i] < best_time) {
+  for (int i = 1; i < category->count; i++) {
+    if (category->implementations[i].enabled && correct[i] && times[i] < best_time) {
       best_time = times[i];
       best_idx = i;
     }
   }
-  
-  printf("Best performing: %s (%.2fx speedup)\n", implementations[best_idx].name, ((double)times[0]) / best_time);
+
+  printf("Best: %s (%.2fx speedup)\n", category->implementations[best_idx].name, ((double)times[0]) / best_time);
   
   double total_ops = 2.0 * rows_a * cols_a * cols_b;
   double best_time_seconds = ((double)best_time) / CLOCKS_PER_SEC;
-  printf("GFLOPS (best): %.2f\n", total_ops / (best_time_seconds * 1e9));
+  printf("GFLOPS: %.2f\n", total_ops / (best_time_seconds * 1e9));
   
   free(a);
   free(b);
@@ -117,9 +117,118 @@ void run_comprehensive_benchmark(int rows_a, int cols_a, int rows_b, int cols_b)
   free(out_test);
 }
 
+void run_comparison_benchmark(int rows_a, int cols_a, int rows_b, int cols_b) {
+  printf("\n=== STANDARD vs TRANSPOSED COMPARISON ===\n");
+  printf("A: %dx%d, B: %dx%d, Output: %dx%d\n", rows_a, cols_a, rows_b, cols_b, rows_a, cols_b);
+  
+  if (cols_a != rows_b) {
+    printf("Error: Matrix dimensions incompatible\n");
+    return;
+  }
+  
+  int shape_a[2] = {rows_a, cols_a};
+  int shape_b[2] = {rows_b, cols_b};
+  size_t size_a = rows_a * cols_a;
+  size_t size_b = rows_b * cols_b;
+  size_t size_out = rows_a * cols_b;
+  
+  float* a = randn_array(shape_a, size_a, 2);
+  float* b = randn_array(shape_b, size_b, 2);
+  float* out_std = (float*)calloc(size_out, sizeof(float));
+  float* out_trans = (float*)calloc(size_out, sizeof(float));
+
+  if (!a || !b || !out_std || !out_trans) {
+    printf("Memory allocation failed\n");
+    return;
+  }
+
+  typedef struct {
+    const char* name;
+    void (*std_func)(float*, float*, float*, int*, int*);
+    void (*trans_func)(float*, float*, float*, int*, int*);
+    void (*std_naive)(float*, float*, float*, int*, int*, size_t, size_t, size_t);
+    int is_naive;
+  } ComparisonPair;
+  
+  ComparisonPair pairs[] = {
+    {"Naive", NULL, transposed_matmul, naive_matmul, 1},
+    {"OpenMP", openmp_matmul, openmp_transpose_matmul, NULL, 0},
+    {"SIMD", simd_matmul, simd_transpose_matmul, NULL, 0},
+    {"Blocked", blocked_matmul, blocked_transpose_matmul, NULL, 0},
+    {"Hybrid", hybrid_parallel_matmul, hybrid_transposed_matmul, NULL, 0}
+  };
+  int num_pairs = sizeof(pairs) / sizeof(pairs[0]);
+  printf("\n%-15s %12s %12s %12s %12s %10s\n", "Method", "Std Time(s)", "Trans Time(s)", "Std GFLOPS", "Trans GFLOPS", "Winner");
+  printf("%-15s %12s %12s %12s %12s %10s\n", "======", "===========", "============", "==========", "===========", "======");
+  
+  double total_ops = 2.0 * rows_a * cols_a * cols_b;
+  
+  for (int i = 0; i < num_pairs; i++) {
+    memset(out_std, 0, size_out * sizeof(float));
+    memset(out_trans, 0, size_out * sizeof(float));
+    
+    clock_t std_start = clock();
+    if (pairs[i].is_naive) {
+      pairs[i].std_naive(a, b, out_std, shape_a, shape_b, 2, size_a, size_b);
+    } else {
+      pairs[i].std_func(a, b, out_std, shape_a, shape_b);
+    }
+    clock_t std_end = clock();
+
+    clock_t trans_start = clock();
+    pairs[i].trans_func(a, b, out_trans, shape_a, shape_b);
+    clock_t trans_end = clock();
+
+    double std_time = ((double)(std_end - std_start)) / CLOCKS_PER_SEC;
+    double trans_time = ((double)(trans_end - trans_start)) / CLOCKS_PER_SEC;
+
+    double std_gflops = total_ops / (std_time * 1e9);
+    double trans_gflops = total_ops / (trans_time * 1e9);
+
+    int results_match = verify_results(out_std, out_trans, size_out, 1e-4);
+    const char* winner = (std_time < trans_time) ? "Standard" : "Transposed";
+    printf("%-15s %12.6f %12.6f %12.2f %12.2f %10s%s\n", pairs[i].name, std_time, trans_time, std_gflops, trans_gflops, winner, results_match ? "" : " (MISMATCH!)");
+  }
+  
+  free(a);
+  free(b);
+  free(out_std);
+  free(out_trans);
+}
+
+void run_comprehensive_benchmark(int rows_a, int cols_a, int rows_b, int cols_b) {
+  MatmulImplementation standard_impls[] = {
+    {"Naive (Reference)", NULL, naive_matmul, 1, 1},
+    {"OpenMP", openmp_matmul, NULL, 0, 1},
+    {"SIMD (AVX2)", simd_matmul, NULL, 0, 1},
+    {"Blocked", blocked_matmul, NULL, 0, 1},
+    {"Hybrid (OpenMP+SIMD+Blocked)", hybrid_parallel_matmul, NULL, 0, 1},
+  };
+  
+  MatmulImplementation transposed_impls[] = {
+    {"Transposed (Reference)", transposed_matmul, NULL, 0, 1},
+    {"OpenMP Transposed", openmp_transpose_matmul, NULL, 0, 1},
+    {"SIMD Transposed", simd_transpose_matmul, NULL, 0, 1},
+    {"SIMD Blocked Transposed", simd_transpose_matmul_blocked, NULL, 0, 1},
+    {"Blocked Transposed", blocked_transpose_matmul, NULL, 0, 1},
+    {"Hybrid Transposed", hybrid_transposed_matmul, NULL, 0, 1},
+  };
+  
+  MatmulCategory categories[] = {
+    {"Standard Matrix Multiplication", standard_impls, 5},
+    {"Transposed Matrix Multiplication", transposed_impls, 6}
+  };
+  
+  for (int i = 0; i < 2; i++) {
+    run_category_benchmark(&categories[i], rows_a, cols_a, rows_b, cols_b);
+  }
+  
+  run_comparison_benchmark(rows_a, cols_a, rows_b, cols_b);
+}
+
 int main() {
-  printf("Parallel Matrix Multiplication Benchmark Suite\n");
-  printf("===============================================\n");
+  printf("Matrix Multiplication Comprehensive Benchmark Suite\n");
+  printf("===================================================\n");
   
   printf("System Info:\n");
   printf("OpenMP threads: %d\n", omp_get_max_threads());
@@ -131,21 +240,25 @@ int main() {
     {512, 256, 256, 128},
     {512, 512, 512, 512},
     {1024, 512, 512, 256},
-    {4096, 1024, 1024, 3072},
+    {1024, 1024, 1024, 1024},
+    // {4096, 1024, 1024, 3072},
   };
   
   int num_tests = sizeof(test_sizes) / sizeof(test_sizes[0]);
   
   for (int i = 0; i < num_tests; i++) {
+    printf("\n" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "\n");
+    printf("TEST %d/%d\n", i + 1, num_tests);
     run_comprehensive_benchmark(test_sizes[i][0], test_sizes[i][1], test_sizes[i][2], test_sizes[i][3]);
   }
 
-  printf("\n=== Implementation Details ===\n");
-  printf("1. Pthread: Manual thread management with row-wise parallelization\n");
-  printf("2. OpenMP: Compiler-based parallelization with dynamic scheduling\n");
-  printf("3. SIMD: AVX2 vectorization processing 8 floats simultaneously\n");
-  printf("4. Blocked: Cache-friendly tiled computation (64x64 blocks)\n");
-  printf("5. Hybrid: Combines OpenMP + SIMD + blocking for maximum performance\n");
-  
+  printf("\n" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "=" "\n");
+  printf("SUMMARY\n");
+  printf("Standard implementations: naive, openmp, simd, blocked, hybrid\n");
+  printf("Transposed implementations: transposed, openmp_transpose, simd_transpose, simd_transpose_blocked, blocked_transpose, hybrid_transposed\n");
+  printf("Direct comparisons show performance differences between standard and transposed approaches\n");
+  printf("SIMD operations process 8 floats simultaneously using AVX2\n");
+  printf("Blocked algorithms use 64x64 tiles for cache efficiency\n");
+  printf("Hybrid combines OpenMP + SIMD + blocking for maximum performance\n");
   return 0;
 }
