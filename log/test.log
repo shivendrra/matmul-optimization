@@ -1,0 +1,306 @@
+D:\Devs\Matmul>gcc -O3 -fopenmp -mavx2 -mfma -std=c11 -o test test.c src/naive_matmul.c src/trans_matmul.c src/kernels/blocked.c src/kernels/openmp.c src/kernels/simd.c -lm
+
+D:\Devs\Matmul>test
+Matrix Multiplication Comprehensive Benchmark Suite
+===================================================
+System Info:
+OpenMP threads: 6
+Available processors: 6
+
+============================================================
+TEST 1/7
+
+=== Standard Matrix Multiplication Implementations ===
+A: 128x128, B: 128x128, Output: 128x128
+
+Implementation                          Time (s)      Speedup    Correct
+==============                          ========      =======    =======
+Naive (Reference)                       0.006000         1.00x        YES
+OpenMP                                  0.013000         0.46x        YES
+SIMD (AVX2)                             0.001000         6.00x        YES
+Blocked                                 0.003000         2.00x        YES
+Hybrid (OpenMP+SIMD+Blocked)            0.002000         3.00x        YES
+Best: SIMD (AVX2) (6.00x speedup)
+GFLOPS: 4.19
+
+=== Transposed Matrix Multiplication Implementations ===
+A: 128x128, B: 128x128, Output: 128x128
+
+Implementation                          Time (s)      Speedup    Correct
+==============                          ========      =======    =======
+Transposed (Reference)                  0.003000         1.00x        YES
+OpenMP Transposed                       0.001000         3.00x        YES
+SIMD Transposed                         0.000000          infx        YES
+SIMD Blocked Transposed                 0.001000         3.00x        YES
+Blocked Transposed                      0.002000         1.50x        YES
+Hybrid Transposed                       0.002000         1.50x        YES
+Best: SIMD Transposed (infx speedup)
+GFLOPS: inf
+
+=== STANDARD vs TRANSPOSED COMPARISON ===
+A: 128x128, B: 128x128, Output: 128x128
+
+Method           Std Time(s) Trans Time(s)   Std GFLOPS Trans GFLOPS     Winner
+======           =========== ============   ==========  ===========     ======
+Naive               0.006000     0.003000         0.70         1.40 Transposed
+OpenMP              0.002000     0.002000         2.10         2.10 Transposed
+SIMD                0.001000     0.001000         4.19         4.19 Transposed
+Blocked             0.003000     0.003000         1.40         1.40 Transposed
+Hybrid              0.001000     0.001000         4.19         4.19 Transposed
+
+============================================================
+TEST 2/7
+
+=== Standard Matrix Multiplication Implementations ===
+A: 256x256, B: 256x256, Output: 256x256
+
+Implementation                          Time (s)      Speedup    Correct
+==============                          ========      =======    =======
+Naive (Reference)                       0.044000         1.00x        YES
+OpenMP                                  0.014000         3.14x        YES
+SIMD (AVX2)                             0.006000         7.33x        YES
+Blocked                                 0.037000         1.19x        YES
+Hybrid (OpenMP+SIMD+Blocked)            0.003000        14.67x        YES
+Best: Hybrid (OpenMP+SIMD+Blocked) (14.67x speedup)
+GFLOPS: 11.18
+
+=== Transposed Matrix Multiplication Implementations ===
+A: 256x256, B: 256x256, Output: 256x256
+
+Implementation                          Time (s)      Speedup    Correct
+==============                          ========      =======    =======
+Transposed (Reference)                  0.028000         1.00x        YES
+OpenMP Transposed                       0.008000         3.50x        YES
+SIMD Transposed                         0.005000         5.60x        YES
+SIMD Blocked Transposed                 0.004000         7.00x        YES
+Blocked Transposed                      0.020000         1.40x        YES
+Hybrid Transposed                       0.008000         3.50x        YES
+Best: SIMD Blocked Transposed (7.00x speedup)
+GFLOPS: 8.39
+
+=== STANDARD vs TRANSPOSED COMPARISON ===
+A: 256x256, B: 256x256, Output: 256x256
+
+Method           Std Time(s) Trans Time(s)   Std GFLOPS Trans GFLOPS     Winner
+======           =========== ============   ==========  ===========     ======
+Naive               0.043000     0.027000         0.78         1.24 Transposed
+OpenMP              0.009000     0.007000         3.73         4.79 Transposed
+SIMD                0.006000     0.005000         5.59         6.71 Transposed
+Blocked             0.037000     0.018000         0.91         1.86 Transposed
+Hybrid              0.002000     0.007000        16.78         4.79   Standard
+
+============================================================
+TEST 3/7
+
+=== Standard Matrix Multiplication Implementations ===
+A: 512x256, B: 256x128, Output: 512x128
+
+Implementation                          Time (s)      Speedup    Correct
+==============                          ========      =======    =======
+Naive (Reference)                       0.044000         1.00x        YES
+OpenMP                                  0.010000         4.40x        YES
+SIMD (AVX2)                             0.006000         7.33x        YES
+Blocked                                 0.020000         2.20x        YES
+Hybrid (OpenMP+SIMD+Blocked)            0.002000        22.00x        YES
+Best: Hybrid (OpenMP+SIMD+Blocked) (22.00x speedup)
+GFLOPS: 16.78
+
+=== Transposed Matrix Multiplication Implementations ===
+A: 512x256, B: 256x128, Output: 512x128
+
+Implementation                          Time (s)      Speedup    Correct
+==============                          ========      =======    =======
+Transposed (Reference)                  0.027000         1.00x        YES
+OpenMP Transposed                       0.006000         4.50x        YES
+SIMD Transposed                         0.005000         5.40x        YES
+SIMD Blocked Transposed                 0.004000         6.75x        YES
+Blocked Transposed                      0.019000         1.42x        YES
+Hybrid Transposed                       0.008000         3.38x        YES
+Best: SIMD Blocked Transposed (6.75x speedup)
+GFLOPS: 8.39
+
+=== STANDARD vs TRANSPOSED COMPARISON ===
+A: 512x256, B: 256x128, Output: 512x128
+
+Method           Std Time(s) Trans Time(s)   Std GFLOPS Trans GFLOPS     Winner
+======           =========== ============   ==========  ===========     ======
+Naive               0.043000     0.027000         0.78         1.24 Transposed
+OpenMP              0.014000     0.008000         2.40         4.19 Transposed
+SIMD                0.006000     0.005000         5.59         6.71 Transposed
+Blocked             0.022000     0.018000         1.53         1.86 Transposed
+Hybrid              0.002000     0.007000        16.78         4.79   Standard
+
+============================================================
+TEST 4/7
+
+=== Standard Matrix Multiplication Implementations ===
+A: 512x512, B: 512x512, Output: 512x512
+
+Implementation                          Time (s)      Speedup    Correct
+==============                          ========      =======    =======
+Naive (Reference)                       0.735000         1.00x        YES
+OpenMP                                  0.238000         3.09x        YES
+SIMD (AVX2)                             0.077000         9.55x        YES
+Blocked                                 0.627000         1.17x        YES
+Hybrid (OpenMP+SIMD+Blocked)            0.016000        45.94x        YES
+Best: Hybrid (OpenMP+SIMD+Blocked) (45.94x speedup)
+GFLOPS: 16.78
+
+=== Transposed Matrix Multiplication Implementations ===
+A: 512x512, B: 512x512, Output: 512x512
+
+Implementation                          Time (s)      Speedup    Correct
+==============                          ========      =======    =======
+Transposed (Reference)                  0.228000         1.00x        YES
+OpenMP Transposed                       0.050000         4.56x        YES
+SIMD Transposed                         0.038000         6.00x         NO
+SIMD Blocked Transposed                 0.033000         6.91x         NO
+Blocked Transposed                      0.143000         1.59x        YES
+Hybrid Transposed                       0.028000         8.14x        YES
+Best: Hybrid Transposed (8.14x speedup)
+GFLOPS: 9.59
+
+=== STANDARD vs TRANSPOSED COMPARISON ===
+A: 512x512, B: 512x512, Output: 512x512
+
+Method           Std Time(s) Trans Time(s)   Std GFLOPS Trans GFLOPS     Winner
+======           =========== ============   ==========  ===========     ======
+Naive               0.707000     0.231000         0.38         1.16 Transposed
+OpenMP              0.207000     0.041000         1.30         6.55 Transposed
+SIMD                0.087000     0.038000         3.09         7.06 Transposed
+Blocked             0.612000     0.149000         0.44         1.80 Transposed
+Hybrid              0.018000     0.046000        14.91         5.84   Standard
+
+============================================================
+TEST 5/7
+
+=== Standard Matrix Multiplication Implementations ===
+A: 1024x512, B: 512x256, Output: 1024x256
+
+Implementation                          Time (s)      Speedup    Correct
+==============                          ========      =======    =======
+Naive (Reference)                       0.331000         1.00x        YES
+OpenMP                                  0.143000         2.31x        YES
+SIMD (AVX2)                             0.050000         6.62x        YES
+Blocked                                 0.280000         1.18x        YES
+Hybrid (OpenMP+SIMD+Blocked)            0.036000         9.19x        YES
+Best: Hybrid (OpenMP+SIMD+Blocked) (9.19x speedup)
+GFLOPS: 7.46
+
+=== Transposed Matrix Multiplication Implementations ===
+A: 1024x512, B: 512x256, Output: 1024x256
+
+Implementation                          Time (s)      Speedup    Correct
+==============                          ========      =======    =======
+Transposed (Reference)                  0.231000         1.00x        YES
+OpenMP Transposed                       0.072000         3.21x        YES
+SIMD Transposed                         0.037000         6.24x         NO
+SIMD Blocked Transposed                 0.032000         7.22x         NO
+Blocked Transposed                      0.146000         1.58x        YES
+Hybrid Transposed                       0.029000         7.97x        YES
+Best: Hybrid Transposed (7.97x speedup)
+GFLOPS: 9.26
+
+=== STANDARD vs TRANSPOSED COMPARISON ===
+A: 1024x512, B: 512x256, Output: 1024x256
+
+Method           Std Time(s) Trans Time(s)   Std GFLOPS Trans GFLOPS     Winner
+======           =========== ============   ==========  ===========     ======
+Naive               0.337000     0.230000         0.80         1.17 Transposed
+OpenMP              0.105000     0.051000         2.56         5.26 Transposed
+SIMD                0.049000     0.036000         5.48         7.46 Transposed
+Blocked             0.283000     0.154000         0.95         1.74 Transposed
+Hybrid              0.026000     0.047000        10.32         5.71   Standard
+
+============================================================
+TEST 6/7
+
+=== Standard Matrix Multiplication Implementations ===
+A: 1024x1024, B: 1024x1024, Output: 1024x1024
+
+Implementation                          Time (s)      Speedup    Correct
+==============                          ========      =======    =======
+Naive (Reference)                      15.700000         1.00x        YES
+OpenMP                                  2.794000         5.62x        YES
+SIMD (AVX2)                             1.889000         8.31x        YES
+Blocked                                 8.113000         1.94x        YES
+Hybrid (OpenMP+SIMD+Blocked)            0.184000        85.33x        YES
+Best: Hybrid (OpenMP+SIMD+Blocked) (85.33x speedup)
+GFLOPS: 11.67
+
+=== Transposed Matrix Multiplication Implementations ===
+A: 1024x1024, B: 1024x1024, Output: 1024x1024
+
+Implementation                          Time (s)      Speedup    Correct
+==============                          ========      =======    =======
+Transposed (Reference)                  1.914000         1.00x        YES
+OpenMP Transposed                       0.355000         5.39x        YES
+SIMD Transposed                         0.380000         5.04x         NO
+SIMD Blocked Transposed                 0.252000         7.60x         NO
+Blocked Transposed                      1.139000         1.68x        YES
+Hybrid Transposed                       0.284000         6.74x        YES
+Best: Hybrid Transposed (6.74x speedup)
+GFLOPS: 7.56
+
+=== STANDARD vs TRANSPOSED COMPARISON ===
+A: 1024x1024, B: 1024x1024, Output: 1024x1024
+
+Method           Std Time(s) Trans Time(s)   Std GFLOPS Trans GFLOPS     Winner
+======           =========== ============   ==========  ===========     ======
+Naive              15.694000     1.912000         0.14         1.12 Transposed
+OpenMP              2.807000     0.321000         0.77         6.69 Transposed
+SIMD                1.879000     0.373000         1.14         5.76 Transposed (MISMATCH!)
+Blocked             8.112000     1.169000         0.26         1.84 Transposed
+Hybrid              0.212000     0.189000        10.13        11.36 Transposed
+
+============================================================
+TEST 7/7
+
+=== Standard Matrix Multiplication Implementations ===
+A: 4096x1024, B: 1024x3072, Output: 4096x3072
+
+Implementation                          Time (s)      Speedup    Correct
+==============                          ========      =======    =======
+Naive (Reference)                     189.902000         1.00x        YES
+OpenMP                                 33.480000         5.67x        YES
+SIMD (AVX2)                            22.766000         8.34x        YES
+Blocked                                97.446000         1.95x        YES
+Hybrid (OpenMP+SIMD+Blocked)            1.999000        95.00x        YES
+Best: Hybrid (OpenMP+SIMD+Blocked) (95.00x speedup)
+GFLOPS: 12.89
+
+=== Transposed Matrix Multiplication Implementations ===
+A: 4096x1024, B: 1024x3072, Output: 4096x3072
+
+Implementation                          Time (s)      Speedup    Correct
+==============                          ========      =======    =======
+Transposed (Reference)                 22.804000         1.00x        YES
+OpenMP Transposed                       4.173000         5.46x        YES
+SIMD Transposed                         4.485000         5.08x         NO
+SIMD Blocked Transposed                 2.867000         7.95x         NO
+Blocked Transposed                     13.661000         1.67x        YES
+Hybrid Transposed                       2.052000        11.11x        YES
+Best: Hybrid Transposed (11.11x speedup)
+GFLOPS: 12.56
+
+=== STANDARD vs TRANSPOSED COMPARISON ===
+A: 4096x1024, B: 1024x3072, Output: 4096x3072
+
+Method           Std Time(s) Trans Time(s)   Std GFLOPS Trans GFLOPS     Winner
+======           =========== ============   ==========  ===========     ======
+Naive             189.850000    22.845000         0.14         1.13 Transposed
+OpenMP             32.694000     4.080000         0.79         6.32 Transposed
+SIMD               22.731000     4.499000         1.13         5.73 Transposed (MISMATCH!)
+Blocked            98.098000    13.567000         0.26         1.90 Transposed
+Hybrid              2.089000     1.805000        12.34        14.28 Transposed
+
+============================================================
+SUMMARY
+Standard implementations: naive, openmp, simd, blocked, hybrid
+Transposed implementations: transposed, openmp_transpose, simd_transpose, simd_transpose_blocked, blocked_transpose, hybrid_transposed
+Direct comparisons show performance differences between standard and transposed approaches
+SIMD operations process 8 floats simultaneously using AVX2
+Blocked algorithms use 64x64 tiles for cache efficiency
+Hybrid combines OpenMP + SIMD + blocking for maximum performance
+
+D:\Devs\Matmul>

@@ -1,0 +1,224 @@
+D:\Devs\Matmul>gcc -O3 -fopenmp -mavx2 -mfma -std=c11 -o debug debug.c src/naive_matmul.c src/trans_matmul.c src/kernels/blocked.c src/kernels/openmp.c src/kernels/simd.c -lm
+
+D:\Devs\Matmul>debug
+Matrix Multiplication Manual Debug Suite
+=========================================
+OpenMP threads: 6
+Available processors: 6
+
+========================================
+DEBUGGING EDGE CASES
+========================================
+Testing small matrices (2x2, 4x4, 8x8):
+
+Size 2x2:
+========================================
+DEBUGGING MATRIX SIZE: 2x2
+========================================
+Computing reference (naive) result...
+
+Testing all implementations:
+Function                             Result
+========                             ======
+blocked_matmul                     : PASS (max_diff: 0.00e+00)
+openmp_matmul                      : PASS (max_diff: 0.00e+00)
+simd_matmul                        : PASS (max_diff: 0.00e+00)
+hybrid_parallel_matmul             : PASS (max_diff: 0.00e+00)
+transposed_matmul                  : PASS (max_diff: 0.00e+00)
+simd_transpose_matmul              : PASS (max_diff: 0.00e+00)
+simd_transpose_matmul_blocked      : PASS (max_diff: 0.00e+00)
+openmp_transpose_matmul            : PASS (max_diff: 0.00e+00)
+blocked_transpose_matmul           : PASS (max_diff: 0.00e+00)
+hybrid_transposed_matmul           : PASS (max_diff: 0.00e+00)
+Matrix A (showing first 8x8):
+   1.326   -0.919
+  -0.589   -0.116
+
+Matrix B (showing first 8x8):
+  -1.382    0.730
+   0.202   -0.153
+
+Reference Output (showing first 8x8):
+  -2.018    1.108
+   0.791   -0.412
+
+
+
+Size 4x4:
+========================================
+DEBUGGING MATRIX SIZE: 4x4
+========================================
+Computing reference (naive) result...
+
+Testing all implementations:
+Function                             Result
+========                             ======
+blocked_matmul                     : PASS (max_diff: 0.00e+00)
+openmp_matmul                      : PASS (max_diff: 0.00e+00)
+simd_matmul                        : PASS (max_diff: 1.19e-07)
+hybrid_parallel_matmul             : PASS (max_diff: 0.00e+00)
+transposed_matmul                  : PASS (max_diff: 0.00e+00)
+simd_transpose_matmul              : PASS (max_diff: 0.00e+00)
+simd_transpose_matmul_blocked      : PASS (max_diff: 0.00e+00)
+openmp_transpose_matmul            : PASS (max_diff: 0.00e+00)
+blocked_transpose_matmul           : PASS (max_diff: 0.00e+00)
+hybrid_transposed_matmul           : PASS (max_diff: 0.00e+00)
+Matrix A (showing first 8x8):
+  -0.166   -0.685    0.599    0.196
+  -1.192   -0.958    0.825    1.070
+  -0.687    1.329    0.541   -0.491
+   1.778   -0.338    0.411    1.137
+
+Matrix B (showing first 8x8):
+   1.433    0.148   -0.205    0.411
+   0.052   -1.107    1.154    0.150
+   0.096    1.097   -0.770    0.338
+  -0.016    0.396    0.782    1.808
+
+Reference Output (showing first 8x8):
+  -0.219    1.468   -1.065    0.385
+  -1.696    2.212   -0.660    1.580
+  -0.856   -1.174    0.875   -0.787
+   2.551    1.539   -0.182    2.874
+
+
+
+Size 8x8:
+========================================
+DEBUGGING MATRIX SIZE: 8x8
+========================================
+Computing reference (naive) result...
+
+Testing all implementations:
+Function                             Result
+========                             ======
+blocked_matmul                     : PASS (max_diff: 0.00e+00)
+openmp_matmul                      : PASS (max_diff: 0.00e+00)
+simd_matmul                        : PASS (max_diff: 9.54e-07)
+hybrid_parallel_matmul             : PASS (max_diff: 9.54e-07)
+transposed_matmul                  : PASS (max_diff: 0.00e+00)
+simd_transpose_matmul              : PASS (max_diff: 0.00e+00)
+simd_transpose_matmul_blocked      : PASS (max_diff: 0.00e+00)
+openmp_transpose_matmul            : PASS (max_diff: 0.00e+00)
+blocked_transpose_matmul           : PASS (max_diff: 0.00e+00)
+hybrid_transposed_matmul           : PASS (max_diff: 9.54e-07)
+Matrix A (showing first 8x8):
+  -1.211    0.684    1.457   -1.513   -0.435   -0.233    0.469   -0.673
+  -1.631   -0.496    0.644   -2.347    1.105    1.059   -1.026   -1.672
+   0.309    0.385    0.276    0.098   -0.148    2.198    1.398   -0.313
+   1.156    2.019   -1.028   -0.620    0.381    0.059   -0.570   -0.521
+  -2.662    1.372   -2.113   -0.433    0.292   -0.366    0.165   -1.961
+   0.270   -0.080    0.764    0.166    0.987   -0.393    0.902    0.373
+   0.393   -0.098   -1.906    1.378    0.019    0.689   -0.087   -0.026
+   0.039   -0.064   -0.492    1.106   -0.455    1.396   -0.393    0.844
+
+Matrix B (showing first 8x8):
+  -0.577    1.718   -0.074   -0.244   -0.912   -1.456   -0.169    0.049
+   1.603   -0.351   -0.676    0.060   -0.139   -0.771   -0.472    0.197
+  -1.115   -1.793    0.668   -0.019   -0.257    0.799    2.550    0.738
+   0.082    0.311    1.901    1.945    2.099    0.929   -0.300    0.188
+  -1.551    0.512    0.424    1.673    1.063    1.771   -1.498    0.065
+  -0.715    1.631   -0.537    0.622    0.513    0.816    0.185    1.825
+  -0.827    0.532    0.947   -0.472    1.390    0.083    0.444    0.219
+   0.032   -0.302   -1.183    1.457   -0.029    0.438    1.099   -0.222
+
+Reference Output (showing first 8x8):
+   0.481   -5.553   -1.096   -4.711   -2.453   -0.223    4.127    0.666
+  -2.439   -2.258   -2.670   -3.653   -3.196    3.093   -0.899    2.008
+  -2.370    4.279    0.539    0.138    2.722    1.076    1.344    4.691
+   3.487    3.073   -3.108   -1.163   -2.714   -4.190   -4.970   -0.299
+   5.665   -1.168   -0.167   -2.743    2.280    0.101   -8.043   -1.678
+  -3.104   -0.596    1.900    1.762    2.006    2.097    1.150    0.054
+   1.401    5.652    0.972    3.080    3.292   -0.161   -5.263    0.098
+   0.572    2.897   -0.498    3.670    2.083    1.299    0.131    2.080
+
+
+Testing matrices with zeros:
+blocked_matmul                     : PASS (max_diff: 0.00e+00)
+Zero matrix A: PASS
+simd_matmul                        : PASS (max_diff: 0.00e+00)
+Zero matrix A: PASS
+========================================
+DEBUGGING MATRIX SIZE: 256x256
+========================================
+Computing reference (naive) result...
+
+Testing all implementations:
+Function                             Result
+========                             ======
+blocked_matmul                     : PASS (max_diff: 0.00e+00)
+openmp_matmul                      : PASS (max_diff: 0.00e+00)
+simd_matmul                        : PASS (max_diff: 1.53e-05)
+hybrid_parallel_matmul             : PASS (max_diff: 1.53e-05)
+transposed_matmul                  : PASS (max_diff: 0.00e+00)
+simd_transpose_matmul              : PASS (max_diff: 4.58e-05)
+simd_transpose_matmul_blocked      : PASS (max_diff: 4.58e-05)
+openmp_transpose_matmul            : PASS (max_diff: 0.00e+00)
+blocked_transpose_matmul           : PASS (max_diff: 0.00e+00)
+hybrid_transposed_matmul           : PASS (max_diff: 1.53e-05)
+
+========================================
+DEBUGGING MATRIX SIZE: 1024x1024
+========================================
+Computing reference (naive) result...
+
+Testing all implementations:
+Function                             Result
+========                             ======
+blocked_matmul                     : PASS (max_diff: 0.00e+00)
+openmp_matmul                      : PASS (max_diff: 0.00e+00)
+simd_matmul                        : PASS (max_diff: 4.96e-05)
+hybrid_parallel_matmul             : PASS (max_diff: 4.96e-05)
+transposed_matmul                  : PASS (max_diff: 0.00e+00)
+simd_transpose_matmul              : FAIL (1067 errors, max_diff: 2.14e-04 at [212,474])
+simd_transpose_matmul_blocked      : FAIL (917 errors, max_diff: 2.14e-04 at [212,474])
+openmp_transpose_matmul            : PASS (max_diff: 0.00e+00)
+blocked_transpose_matmul           : PASS (max_diff: 0.00e+00)
+hybrid_transposed_matmul           : PASS (max_diff: 4.96e-05)
+
+========================================
+DEBUGGING RECTANGULAR MATRICES
+========================================
+Testing A(128x256) * B(256x128) = C(128x128)
+blocked_matmul                     : PASS (max_diff: 0.00e+00)
+openmp_matmul                      : PASS (max_diff: 0.00e+00)
+simd_matmul                        : PASS (max_diff: 1.91e-05)
+hybrid_parallel_matmul             : PASS (max_diff: 1.91e-05)
+transposed_matmul                  : PASS (max_diff: 0.00e+00)
+simd_transpose_matmul              : PASS (max_diff: 4.96e-05)
+simd_transpose_matmul_blocked      : PASS (max_diff: 4.58e-05)
+openmp_transpose_matmul            : PASS (max_diff: 0.00e+00)
+hybrid_transposed_matmul           : PASS (max_diff: 1.91e-05)
+
+Testing A(256x512) * B(512x256) = C(256x256)
+blocked_matmul                     : PASS (max_diff: 0.00e+00)
+openmp_matmul                      : PASS (max_diff: 0.00e+00)
+simd_matmul                        : PASS (max_diff: 3.05e-05)
+hybrid_parallel_matmul             : PASS (max_diff: 3.05e-05)
+transposed_matmul                  : PASS (max_diff: 0.00e+00)
+simd_transpose_matmul              : PASS (max_diff: 7.63e-05)
+simd_transpose_matmul_blocked      : PASS (max_diff: 7.63e-05)
+openmp_transpose_matmul            : PASS (max_diff: 0.00e+00)
+hybrid_transposed_matmul           : PASS (max_diff: 3.05e-05)
+
+Testing A(512x256) * B(256x1024) = C(512x1024)
+blocked_matmul                     : PASS (max_diff: 0.00e+00)
+openmp_matmul                      : PASS (max_diff: 0.00e+00)
+simd_matmul                        : PASS (max_diff: 2.29e-05)
+hybrid_parallel_matmul             : PASS (max_diff: 2.29e-05)
+transposed_matmul                  : PASS (max_diff: 0.00e+00)
+simd_transpose_matmul              : PASS (max_diff: 5.34e-05)
+simd_transpose_matmul_blocked      : PASS (max_diff: 4.96e-05)
+openmp_transpose_matmul            : PASS (max_diff: 0.00e+00)
+hybrid_transposed_matmul           : PASS (max_diff: 2.29e-05)
+
+========================================
+DEBUG SUMMARY
+========================================
+All functions tested against naive_matmul reference
+Tolerance used: 1e-4 for most tests, 1e-6 for edge cases
+PASS: Function produces correct results
+FAIL: Function has numerical differences beyond tolerance
+Check individual function outputs above for details
+
+D:\Devs\Matmul>
