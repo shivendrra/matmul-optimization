@@ -7,7 +7,7 @@
 #include <string.h>
 #include <math.h>
 #include <omp.h>
-#include "src/helpers.h"
+#include "src/inc/helpers.h"
 #include "src/matmul.h"
 
 typedef struct {
