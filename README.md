@@ -9,6 +9,7 @@ This was tested on HP Envy x360: AMD ryzen 5 4500u 8GB ram.
 
 ![1.png](https://github.com/shivendrra/matmul-optimization/blob/main/media/1.png)
 ![2.png](https://github.com/shivendrra/matmul-optimization/blob/main/media/2.png)
+![4.png](https://github.com/shivendrra/matmul-optimization/blob/main/media/4.png)
 ![3.png](https://github.com/shivendrra/matmul-optimization/blob/main/media/3.png)
 
 *Interactive performance analysis showing execution time and GFLOPS across different matrix sizes and implementations.*
