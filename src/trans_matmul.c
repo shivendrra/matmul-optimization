@@ -6,7 +6,7 @@
 #include <immintrin.h>
 #include "matmul.h"
 
-#define BLOCK_SIZE 64
+// #define BLOCK_SIZE 64  uncomment this line for runtime test cases, and replace all `block_size`-> `BLOCK_SIZE` & vice versa for block_testing
 
 void transpose_2d_array_ops(float* a, float* out, int* shape) {
   int rows = shape[0], cols = shape[1];
@@ -48,13 +48,14 @@ void transposed_matmul(float* a, float* b, float* out, int* shape_a, int* shape_
   }
 }
 
-void hybrid_transpose_2d_array_ops(float* a, float* out, int* shape) {
+// void hybrid_transpose_2d_array_ops(float* a, float* out, int* shape) { uncomment this as well for normal test cases
+void hybrid_transpose_2d_array_ops(float* a, float* out, int* shape, int block_size) {
   int rows = shape[0], cols = shape[1];
   #pragma omp parallel for schedule(static)
-  for (int ii = 0; ii < rows; ii += BLOCK_SIZE) {
-    for (int jj = 0; jj < cols; jj += BLOCK_SIZE) {
-      int i_end = (ii + BLOCK_SIZE < rows) ? ii + BLOCK_SIZE : rows;
-      int j_end = (jj + BLOCK_SIZE < cols) ? jj + BLOCK_SIZE : cols;
+  for (int ii = 0; ii < rows; ii += block_size) {
+    for (int jj = 0; jj < cols; jj += block_size) {
+      int i_end = (ii + block_size < rows) ? ii + block_size : rows;
+      int j_end = (jj + block_size < cols) ? jj + block_size : cols;
       for (int i = ii; i < i_end; i++) {
         for (int j = jj; j < j_end; j++) { out[j * rows + i] = a[i * cols + j]; }
       }
@@ -62,7 +63,8 @@ void hybrid_transpose_2d_array_ops(float* a, float* out, int* shape) {
   }
 }
 
-void hybrid_transposed_matmul(float* a, float* b, float* out, int* shape_a, int* shape_b) {
+// void hybrid_transposed_matmul(float* a, float* b, float* out, int* shape_a, int* shape_b) { uncomment this as well for normal test cases
+void hybrid_transposed_matmul(float* a, float* b, float* out, int* shape_a, int* shape_b, int block_size) {
   int rows_a = shape_a[0], cols_a = shape_a[1], cols_b = shape_b[1];
   int rows_b = shape_b[0];
   float* b_transposed = (float*)malloc(rows_b * cols_b * sizeof(float));
@@ -70,13 +72,14 @@ void hybrid_transposed_matmul(float* a, float* b, float* out, int* shape_a, int*
     fprintf(stderr, "Memory allocation failed for transpose buffer\n");
     exit(EXIT_FAILURE);
   }
-  hybrid_transpose_2d_array_ops(b, b_transposed, shape_b);
+  // hybrid_transpose_2d_array_ops(b, b_transposed, shape_b); uncomment this as well for normal test cases
+  hybrid_transpose_2d_array_ops(b, b_transposed, shape_b, block_size);
   memset(out, 0, rows_a * cols_b * sizeof(float));  
   #pragma omp parallel for collapse(2) schedule(dynamic, 8)
-  for (int ii = 0; ii < rows_a; ii += BLOCK_SIZE) {
-    for (int jj = 0; jj < cols_b; jj += BLOCK_SIZE) {
-      int i_end = (ii + BLOCK_SIZE < rows_a) ? ii + BLOCK_SIZE : rows_a;
-      int j_end = (jj + BLOCK_SIZE < cols_b) ? jj + BLOCK_SIZE : cols_b;
+  for (int ii = 0; ii < rows_a; ii += block_size) {
+    for (int jj = 0; jj < cols_b; jj += block_size) {
+      int i_end = (ii + block_size < rows_a) ? ii + block_size : rows_a;
+      int j_end = (jj + block_size < cols_b) ? jj + block_size : cols_b;
 
       // restructured to leverage transpose benefits with proper memory access
       for (int i = ii; i < i_end; i++) {

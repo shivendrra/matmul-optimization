@@ -6,7 +6,7 @@
 #include <immintrin.h>
 #include "matmul.h"
 
-#define  BLOCK_SIZE  64
+// #define BLOCK_SIZE 64  uncomment this line for runtime test cases, and replace all `block_size`-> `BLOCK_SIZE` & vice versa for block_testing
 
 void naive_matmul(float* a, float* b, float* out, int *shape1, int *shape2, size_t ndim, size_t size1, size_t size2) {
   for (int i = 0; i < shape1[0]; i++) {
@@ -20,18 +20,19 @@ void naive_matmul(float* a, float* b, float* out, int *shape1, int *shape2, size
   }
 }
 
-void hybrid_parallel_matmul(float* a, float* b, float* out, int* shape_a, int* shape_b) {
+// void hybrid_parallel_matmul(float* a, float* b, float* out, int* shape_a, int* shape_b) { uncomment this as well for normal test cases
+void hybrid_parallel_matmul(float* a, float* b, float* out, int* shape_a, int* shape_b, int block_size) {
   int rows_a = shape_a[0], cols_a = shape_a[1], cols_b = shape_b[1];
 
   memset(out, 0, rows_a * cols_b * sizeof(float));
   #pragma omp parallel for collapse(2) schedule(dynamic, 4)
-  for (int ii = 0; ii < rows_a; ii += BLOCK_SIZE) {
-    for (int jj = 0; jj < cols_b; jj += BLOCK_SIZE) {
-      for (int kk = 0; kk < cols_a; kk += BLOCK_SIZE) {
+  for (int ii = 0; ii < rows_a; ii += block_size) {
+    for (int jj = 0; jj < cols_b; jj += block_size) {
+      for (int kk = 0; kk < cols_a; kk += block_size) {
 
-        int i_end = (ii + BLOCK_SIZE < rows_a) ? ii + BLOCK_SIZE : rows_a;
-        int j_end = (jj + BLOCK_SIZE < cols_b) ? jj + BLOCK_SIZE : cols_b;
-        int k_end = (kk + BLOCK_SIZE < cols_a) ? kk + BLOCK_SIZE : cols_a;
+        int i_end = (ii + block_size < rows_a) ? ii + block_size : rows_a;
+        int j_end = (jj + block_size < cols_b) ? jj + block_size : cols_b;
+        int k_end = (kk + block_size < cols_a) ? kk + block_size : cols_a;
 
         for (int i = ii; i < i_end; i++) {
           for (int j = jj; j < j_end; j += 8) {
