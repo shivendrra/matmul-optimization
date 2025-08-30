@@ -36,13 +36,13 @@ double get_time() {
   return ts.tv_sec + ts.tv_nsec / 1e9;
 }
 
-void run_hybrid_test(FILE* log_file, const char* method_name, void (*matmul_func)(float*, float*, float*, int*, int*), float* a, float* b, float* out, int* shape_a, int* shape_b, int block_size, int warmup_runs, int test_runs) {
+void run_hybrid_test(FILE* log_file, const char* method_name, void (*matmul_func)(float*, float*, float*, int*, int*, int), float* a, float* b, float* out, int* shape_a, int* shape_b, int block_size, int warmup_runs, int test_runs) {
 
-  for (int w = 0; w < warmup_runs; w++) { matmul_func(a, b, out, shape_a, shape_b); }
+  for (int w = 0; w < warmup_runs; w++) { matmul_func(a, b, out, shape_a, shape_b, block_size); }
   double total_time = 0.0;
   for (int t = 0; t < test_runs; t++) {
     double start_time = get_time();
-    matmul_func(a, b, out, shape_a, shape_b);
+    matmul_func(a, b, out, shape_a, shape_b, block_size);
     double end_time = get_time();
     total_time += (end_time - start_time);
   }
@@ -57,7 +57,7 @@ void run_hybrid_test(FILE* log_file, const char* method_name, void (*matmul_func
 int main() {
   create_logs_directory();
   
-  FILE* log_file = fopen("logs/batch_testing.log", "w");
+  FILE* log_file = fopen("log/block.log", "w");
   if (!log_file) {
     fprintf(stderr, "Failed to create log file\n");
     return 1;
