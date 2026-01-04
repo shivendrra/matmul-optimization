@@ -7,35 +7,23 @@
 #define  NUM_ELEMNS  8
 
 void simd_matmul(float* a, float* b, float* out, int* shape_a, int* shape_b) {
-  int rows_a = shape_a[0], cols_a = shape_a[1], cols_b = shape_b[1];
+  int M = shape_a[0], K = shape_a[1], N = shape_b[1];
+  int N8 = N & ~7;
 
-  for (int i = 0; i < rows_a; i++) {
-    for (int j = 0; j < cols_b; j += NUM_ELEMNS) {
-      __m256 sum = _mm256_setzero_ps();
-
-      for (int k = 0; k < cols_a; k++) {
-        __m256 a_vec = _mm256_broadcast_ss(&a[i * cols_a + k]);
-
-        int remaining = cols_b - j;
-        if (remaining >= NUM_ELEMNS) {
-          __m256 b_vec = _mm256_loadu_ps(&b[k * cols_b + j]);
-          sum = _mm256_fmadd_ps(a_vec, b_vec, sum);
-        } else {
-          float b_vals[NUM_ELEMNS] = {0};
-          for (int idx = 0; idx < remaining; idx++) {
-            b_vals[idx] = b[k * cols_b + j + idx];
-          }
-          __m256 b_vec = _mm256_loadu_ps(b_vals);
-          sum = _mm256_fmadd_ps(a_vec, b_vec, sum);
-        }
+  for (int i = 0; i < M; i++) {
+    for (int j = 0; j < N8; j += 8) {
+      __m256 acc = _mm256_setzero_ps();
+      for (int k = 0; k < K; k++) {
+        __m256 a_b = _mm256_broadcast_ss(&a[i * K + k]);
+        __m256 b_v = _mm256_loadu_ps(&b[k * N + j]);
+        acc = _mm256_fmadd_ps(a_b, b_v, acc);
       }
-
-      float result[NUM_ELEMNS];
-      _mm256_storeu_ps(result, sum);
-      int remaining = cols_b - j;
-      for (int idx = 0; idx < remaining && idx < NUM_ELEMNS; idx++) {
-        out[i * cols_b + j + idx] = result[idx];
-      }
+      _mm256_storeu_ps(&out[i * N + j], acc);
+    }
+    for (int j = N8; j < N; j++) {
+      float sum = 0.0f;
+      for (int k = 0; k < K; k++) sum += a[i * K + k] * b[k * N + j];
+      out[i * N + j] = sum;
     }
   }
 }
@@ -63,75 +51,71 @@ void simd_transpose_2d_array_ops(float* a, float* out, int* shape) {
 }
 
 void simd_transpose_matmul(float* a, float* b, float* out, int* shape_a, int* shape_b) {
-  int rows_a = shape_a[0], cols_a = shape_a[1], rows_b = shape_b[0], cols_b = shape_b[1];
-  float* b_transposed = (float*)malloc(rows_b * cols_b * sizeof(float));
-  if (b_transposed == NULL) {
-    fprintf(stderr, "Memory allocation failed for transpose buffer\n");
-    exit(EXIT_FAILURE);
-  }
-  simd_transpose_2d_array_ops(b, b_transposed, shape_b);  
-  for (int i = 0; i < rows_a; i++) {
-    for (int j = 0; j < cols_b; j++) {
-      __m256 sum_vec = _mm256_setzero_ps();
-      int simd_end = (cols_a / NUM_ELEMNS) * NUM_ELEMNS;
+  int M = shape_a[0], K = shape_a[1], N = shape_b[1];
+  float* bt = aligned_malloc_32(K * N * sizeof(float));
 
-      for (int k = 0; k < simd_end; k += NUM_ELEMNS) {
-        __m256 a_vec = _mm256_loadu_ps(&a[i * cols_a + k]);
-        __m256 b_vec = _mm256_loadu_ps(&b_transposed[j * cols_a + k]);
-        sum_vec = _mm256_fmadd_ps(a_vec, b_vec, sum_vec);
+  for (int i = 0; i < shape_b[0]; i++)
+    for (int j = 0; j < shape_b[1]; j++)
+      bt[j * K + i] = b[i * N + j];
+  int K8 = K & ~7;
+
+  for (int i = 0; i < M; i++) {
+    for (int j = 0; j < N; j++) {
+      __m256 acc = _mm256_setzero_ps();
+      int k = 0;
+      for (; k < K8; k += 8) {
+        __m256 av = _mm256_loadu_ps(&a[i * K + k]);
+        __m256 bv = _mm256_loadu_ps(&bt[j * K + k]);
+        acc = _mm256_fmadd_ps(av, bv, acc);
       }
-
-      float sum_array[NUM_ELEMNS];
-      _mm256_storeu_ps(sum_array, sum_vec);
-      float sum = sum_array[0] + sum_array[1] + sum_array[2] + sum_array[3] + sum_array[4] + sum_array[5] + sum_array[6] + sum_array[7];
-      for (int k = simd_end; k < cols_a; k++) { sum += a[i * cols_a + k] * b_transposed[j * cols_a + k]; }
-      out[i * cols_b + j] = sum;
+      __m128 hi = _mm256_extractf128_ps(acc, 1);
+      __m128 lo = _mm256_castps256_ps128(acc);
+      __m128 sum = _mm_add_ps(hi, lo);
+      sum = _mm_hadd_ps(sum, sum);
+      sum = _mm_hadd_ps(sum, sum);
+      float s = _mm_cvtss_f32(sum);
+      for (; k < K; k++) s += a[i * K + k] * bt[j * K + k];
+      out[i * N + j] = s;
     }
   }
-  free(b_transposed);
+  aligned_free(bt);
 }
 
 void simd_transpose_matmul_blocked(float* a, float* b, float* out, int* shape_a, int* shape_b) {
-  int rows_a = shape_a[0], cols_a = shape_a[1], rows_b = shape_b[0], cols_b = shape_b[1];
-  float* b_transposed = (float*)malloc(rows_b * cols_b * sizeof(float));
-  if (b_transposed == NULL) {
-    fprintf(stderr, "Memory allocation failed for transpose buffer\n");
-    exit(EXIT_FAILURE);
-  }
-  simd_transpose_2d_array_ops(b, b_transposed, shape_b);
-  for (int i = 0; i < rows_a * cols_b; i++) { out[i] = 0.0f; }
-  for (int ii = 0; ii < rows_a; ii += BLOCK_SIZE) {
-    for (int jj = 0; jj < cols_b; jj += BLOCK_SIZE) {
-      for (int kk = 0; kk < cols_a; kk += BLOCK_SIZE) {
-        int i_end = (ii + BLOCK_SIZE < rows_a) ? ii + BLOCK_SIZE : rows_a;
-        int j_end = (jj + BLOCK_SIZE < cols_b) ? jj + BLOCK_SIZE : cols_b;
-        int k_end = (kk + BLOCK_SIZE < cols_a) ? kk + BLOCK_SIZE : cols_a;
+  int M = shape_a[0], K = shape_a[1], N = shape_b[1];
+  float* bt = aligned_malloc_32(K * N * sizeof(float));
 
-        for (int i = ii; i < i_end; i++) {
-          for (int j = jj; j < j_end; j++) {
-            __m256 sum_vec = _mm256_setzero_ps();
-            int k_simd_end = kk + ((k_end - kk) / NUM_ELEMNS) * NUM_ELEMNS;
-            for (int k = kk; k < k_simd_end; k += NUM_ELEMNS) {
-              __m256 a_vec = _mm256_loadu_ps(&a[i * cols_a + k]);
-              __m256 b_vec = _mm256_loadu_ps(&b_transposed[j * cols_a + k]);
-              sum_vec = _mm256_fmadd_ps(a_vec, b_vec, sum_vec);
+  for (int i = 0; i < shape_b[0]; i++)
+    for (int j = 0; j < shape_b[1]; j++)
+      bt[j * K + i] = b[i * N + j];
+
+  memset(out, 0, M * N * sizeof(float));
+
+  for (int ii = 0; ii < M; ii += BLOCK_SIZE)
+    for (int jj = 0; jj < N; jj += BLOCK_SIZE)
+      for (int kk = 0; kk < K; kk += BLOCK_SIZE) {
+        int ie = ii + BLOCK_SIZE < M ? ii + BLOCK_SIZE : M;
+        int je = jj + BLOCK_SIZE < N ? jj + BLOCK_SIZE : N;
+        int ke = kk + BLOCK_SIZE < K ? kk + BLOCK_SIZE : K;
+        int ke8 = ke & ~7;
+        for (int i = ii; i < ie; i++)
+          for (int j = jj; j < je; j++) {
+            __m256 acc = _mm256_setzero_ps();
+            int k = kk;
+            for (; k < ke8; k += 8) {
+              __m256 av = _mm256_loadu_ps(&a[i * K + k]);
+              __m256 bv = _mm256_loadu_ps(&bt[j * K + k]);
+              acc = _mm256_fmadd_ps(av, bv, acc);
             }
-
-            __m128 high = _mm256_extractf128_ps(sum_vec, 1);
-            __m128 low = _mm256_castps256_ps128(sum_vec);
-            __m128 sum128 = _mm_add_ps(high, low);
-            __m128 shuf = _mm_shuffle_ps(sum128, sum128, _MM_SHUFFLE(2, 3, 0, 1));
-            sum128 = _mm_add_ps(sum128, shuf);
-            shuf = _mm_shuffle_ps(sum128, sum128, _MM_SHUFFLE(1, 0, 3, 2));
-            sum128 = _mm_add_ps(sum128, shuf);
-            float partial_sum = _mm_cvtss_f32(sum128);
-
-            for (int k = k_simd_end; k < k_end; k++) { partial_sum += a[i * cols_a + k] * b_transposed[j * cols_a + k]; }
-            out[i * cols_b + j] += partial_sum;
+            __m128 hi = _mm256_extractf128_ps(acc, 1);
+            __m128 lo = _mm256_castps256_ps128(acc);
+            __m128 sum = _mm_add_ps(hi, lo);
+            sum = _mm_hadd_ps(sum, sum);
+            sum = _mm_hadd_ps(sum, sum);
+            float s = _mm_cvtss_f32(sum);
+            for (; k < ke; k++) s += a[i * K + k] * bt[j * K + k];
+            out[i * N + j] += s;
           }
-        }
       }
-    }
-  }
-  free(b_transposed);
+  aligned_free(bt);
 }
