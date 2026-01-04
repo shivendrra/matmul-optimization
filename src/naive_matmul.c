@@ -6,7 +6,7 @@
 #include <immintrin.h>
 #include "matmul.h"
 
-// #define BLOCK_SIZE 64  uncomment this line for runtime test cases, and replace all `block_size`-> `BLOCK_SIZE` & vice versa for block_testing
+#define HYBRID_BLOCK_SIZE 64
 
 void naive_matmul(float* a, float* b, float* out, int *shape1, int *shape2, size_t ndim, size_t size1, size_t size2) {
   for (int i = 0; i < shape1[0]; i++) {
@@ -20,42 +20,47 @@ void naive_matmul(float* a, float* b, float* out, int *shape1, int *shape2, size
   }
 }
 
-// void hybrid_parallel_matmul(float* a, float* b, float* out, int* shape_a, int* shape_b) { uncomment this as well for normal test cases
-void hybrid_parallel_matmul(float* a, float* b, float* out, int* shape_a, int* shape_b, int block_size) {
-  int rows_a = shape_a[0], cols_a = shape_a[1], cols_b = shape_b[1];
+void hybrid_parallel_matmul_impl(float* a, float* b, float* out, int* shape_a, int* shape_b, int block_size) {
+  int M = shape_a[0], K = shape_a[1], N = shape_b[1];
+  int N8 = N & ~7;
 
-  memset(out, 0, rows_a * cols_b * sizeof(float));
-  #pragma omp parallel for collapse(2) schedule(dynamic, 4)
-  for (int ii = 0; ii < rows_a; ii += block_size) {
-    for (int jj = 0; jj < cols_b; jj += block_size) {
-      for (int kk = 0; kk < cols_a; kk += block_size) {
+  memset(out, 0, M * N * sizeof(float));
 
-        int i_end = (ii + block_size < rows_a) ? ii + block_size : rows_a;
-        int j_end = (jj + block_size < cols_b) ? jj + block_size : cols_b;
-        int k_end = (kk + block_size < cols_a) ? kk + block_size : cols_a;
+  #pragma omp parallel for collapse(2) schedule(static)
+  for (int ii = 0; ii < M; ii += block_size) {
+    for (int jj = 0; jj < N8; jj += block_size) {
+      for (int kk = 0; kk < K; kk += block_size) {
 
-        for (int i = ii; i < i_end; i++) {
-          for (int j = jj; j < j_end; j += 8) {
-            __m256 sum = _mm256_loadu_ps(&out[i * cols_b + j]);
+        int ie = ii + block_size < M ? ii + block_size : M;
+        int je = jj + block_size < N8 ? jj + block_size : N8;
+        int ke = kk + block_size < K ? kk + block_size : K;
 
-            for (int k = kk; k < k_end; k++) {
-              __m256 a_vec = _mm256_broadcast_ss(&a[i * cols_a + k]);
+        for (int i = ii; i < ie; i++) {
+          for (int j = jj; j < je; j += 8) {
+            __m256 acc = _mm256_loadu_ps(&out[i * N + j]);
 
-              int remaining = j_end - j;
-              if (remaining >= 8 && j + 8 <= cols_b) {
-                __m256 b_vec = _mm256_loadu_ps(&b[k * cols_b + j]);
-                sum = _mm256_fmadd_ps(a_vec, b_vec, sum);
-              } else {
-                for (int jj_inner = j; jj_inner < j_end && jj_inner < j + 8; jj_inner++) {
-                  out[i * cols_b + jj_inner] += a[i * cols_a + k] * b[k * cols_b + jj_inner];
-                }
-                continue;
-              }
+            for (int k = kk; k < ke; k++) {
+              __m256 a_b = _mm256_broadcast_ss(&a[i * K + k]);
+              __m256 b_v = _mm256_loadu_ps(&b[k * N + j]);
+              acc = _mm256_fmadd_ps(a_b, b_v, acc);
             }
-            if (j + 8 <= cols_b && j + 8 <= j_end) { _mm256_storeu_ps(&out[i * cols_b + j], sum); }
+
+            _mm256_storeu_ps(&out[i * N + j], acc);
           }
         }
       }
     }
   }
+
+  for (int i = 0; i < M; i++) {
+    for (int j = N8; j < N; j++) {
+      float sum = 0.0f;
+      for (int k = 0; k < K; k++) sum += a[i * K + k] * b[k * N + j];
+      out[i * N + j] = sum;
+    }
+  }
+}
+
+void hybrid_parallel_matmul(float* a, float* b, float* out, int* shape_a, int* shape_b) {
+  hybrid_parallel_matmul_impl(a, b, out, shape_a, shape_b, HYBRID_BLOCK_SIZE);
 }
